@@ -1,4 +1,4 @@
-#     Copyright 2025, Kay Hayen, mailto:kay.hayen@gmail.com find license text at end of file
+#     Copyright 2025, Akash Levy, mailto:akash@silimate.com find license text at end of file
 
 
 """Cleanup of caches for Nuitka.
@@ -10,6 +10,7 @@ caches and is supposed to run before or instead of Nuitka compilation.
 import os
 
 from nuitka.BytecodeCaching import getBytecodeCacheDir
+from nuitka.CompilationCaching import getCompilationCacheDir
 from nuitka.Tracing import cache_logger
 from nuitka.utils.AppDirs import getCacheDir
 from nuitka.utils.FileOperations import removeDirectory
@@ -36,6 +37,7 @@ def cleanCaches():
     _cleanCacheDirectory("clcache", getCacheDir("clcache"))
     _cleanCacheDirectory("zig", getCacheDir("zig"))
     _cleanCacheDirectory("bytecode", getBytecodeCacheDir())
+    _cleanCacheDirectory("compilation", getCompilationCacheDir())
     _cleanCacheDirectory("dll-dependencies", getCacheDir("library_dependencies"))
 
 

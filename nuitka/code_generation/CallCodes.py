@@ -572,6 +572,36 @@ quick_instance_calls_used = set()
 quick_mixed_calls_used = set()
 
 
+def getQuickCallsUsedSets():
+    """Get the current state of quick call usage sets for caching.
+
+    Returns:
+        A dict with serializable representations of the quick call sets.
+    """
+    return {
+        "quick_calls": sorted(quick_calls_used),
+        "quick_tuple_calls": sorted(quick_tuple_calls_used),
+        "quick_instance_calls": sorted(quick_instance_calls_used),
+        "quick_mixed_calls": sorted([list(item) for item in quick_mixed_calls_used]),
+    }
+
+
+def registerQuickCallsUsed(quick_call_data):
+    """Register quick call requirements from a cached module.
+
+    Args:
+        quick_call_data: Dict from 'getQuickCallsUsedSets'.
+    """
+    for size in quick_call_data.get("quick_calls", ()):
+        quick_calls_used.add(size)
+    for size in quick_call_data.get("quick_tuple_calls", ()):
+        quick_tuple_calls_used.add(size)
+    for size in quick_call_data.get("quick_instance_calls", ()):
+        quick_instance_calls_used.add(size)
+    for item in quick_call_data.get("quick_mixed_calls", ()):
+        quick_mixed_calls_used.add(tuple(item))
+
+
 def _getInstanceCallCodePosArgsQuick(
     to_name,
     called_name,

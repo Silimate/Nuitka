@@ -20,6 +20,10 @@ from nuitka.build.SconsUtils import (
     readSconsErrorReport,
     readSconsReport,
 )
+from nuitka.code_generation.CallCodes import (
+    getQuickCallsUsedSets,
+    registerQuickCallsUsed,
+)
 from nuitka.code_generation.CodeGeneration import (
     generateHelpersCode,
     generateModuleCode,
@@ -27,6 +31,10 @@ from nuitka.code_generation.CodeGeneration import (
 from nuitka.code_generation.ConstantCodes import (
     addDistributionMetadataValue,
     getDistributionMetadataValues,
+)
+from nuitka.CompilationCaching import (
+    isEligibleForCompilationCache,
+    writeCompilationCacheEntry,
 )
 from nuitka.freezer.IncludedDataFiles import (
     addIncludedDataFilesFromFileOptions,
@@ -106,6 +114,7 @@ from nuitka.options.Options import (
     shallRunInDebugger,
     shallTraceExecution,
     shallTreatUninstalledPython,
+    shallUseCompilationCache,
     shallUsePythonDebug,
     shallUseStaticLibPython,
 )
@@ -168,6 +177,7 @@ from nuitka.utils.FileOperations import (
     getReportPath,
     isFilesystemEncodable,
     openTextFile,
+    putTextFileContents,
     removeDirectory,
 )
 from nuitka.utils.Importing import getPackageDirFilename
@@ -456,10 +466,133 @@ def pickSourceFilenames(source_dir, modules):
     return module_filenames
 
 
+def _computeQuickCallDelta(before, after):
+    """Compute the delta between two quick call set snapshots."""
+    return {
+        "quick_calls": sorted(set(after["quick_calls"]) - set(before["quick_calls"])),
+        "quick_tuple_calls": sorted(
+            set(after["quick_tuple_calls"]) - set(before["quick_tuple_calls"])
+        ),
+        "quick_instance_calls": sorted(
+            set(after["quick_instance_calls"]) - set(before["quick_instance_calls"])
+        ),
+        "quick_mixed_calls": sorted(
+            [
+                item
+                for item in after["quick_mixed_calls"]
+                if item not in before["quick_mixed_calls"]
+            ]
+        ),
+    }
+
+
+def _ensureAllInternalHelpers():
+    """Ensure all internal helper functions are created.
+
+    Cached modules skip tree building but their C source may reference
+    internal helper functions. This forces creation of all known helpers
+    so they can be compiled into the main module.
+    """
+    from nuitka.tree.ComplexCallHelperFunctions import (
+        ensureAllComplexCallHelpers,
+    )
+    from nuitka.tree.ReformulationDictionaryCreation import (
+        _getDictUnpackingHelper,
+    )
+    from nuitka.tree.ReformulationSequenceCreation import (
+        getListUnpackingHelper,
+        getSetUnpackingHelper,
+    )
+
+    ensureAllComplexCallHelpers()
+    getListUnpackingHelper()
+    getSetUnpackingHelper()
+    _getDictUnpackingHelper()
+
+    # Python 3 class helpers.
+    try:
+        from nuitka.tree.ReformulationClasses3 import (
+            getClassBasesMroConversionHelper,
+            getClassSelectMetaClassHelper,
+        )
+
+        getClassBasesMroConversionHelper()
+        getClassSelectMetaClassHelper()
+    except ImportError:
+        pass
+
+
+def _ensureMainModuleHelpers(main_module):
+    """Ensure all internal helper functions are optimized, active, and exported.
+
+    After optimization and pruning, newly created helpers (from
+    'ensureAllComplexCallHelpers') are in 'subnode_functions' but not
+    in 'active_functions'. This forces their optimization, marks them
+    as active, and marks them as cross-module used so they get external
+    linkage (not 'static') in the generated C code. Without this, cached
+    modules that reference these helpers would fail at link time.
+    """
+    for func in main_module.subnode_functions:
+        if func not in main_module.active_functions:
+            if not getattr(func, "optimization_done", True):
+                func.computeFunctionRaw(trace_collection=None)
+            main_module.active_functions.add(func)
+            # Ensure the helper is exported so other modules can reference it.
+            func.markAsCrossModuleUsed()
+            func.markAsDirectlyCalled()
+
+
+def _writeCachedModuleFiles(module, c_filename):
+    """Write cached C source and constants files for a cached compiled module."""
+    c_source = module.getCachedCSource()
+    const_data = module.getCachedConstData()
+
+    putTextFileContents(filename=c_filename, contents=c_source, encoding="latin1")
+
+    if const_data is not None:
+        const_filename = changeFilenameExtension(c_filename, ".const")
+        with open(const_filename, "wb") as const_file:
+            const_file.write(const_data)
+
+
+def _saveModuleToCompilationCache(
+    module, source_code, c_filename, quick_calls_before, quick_calls_after
+):
+    """Save a freshly compiled module to the compilation cache."""
+    module_name = module.getFullName()
+
+    # Read the constants file that was written as a side effect of code generation.
+    const_filename = changeFilenameExtension(c_filename, ".const")
+    if os.path.exists(const_filename):
+        with open(const_filename, "rb") as const_file:
+            const_data = const_file.read()
+    else:
+        const_data = None
+
+    # Get the module source code. It may be stored on the module or read from disk.
+    module_source_code = module.getSourceCode()
+
+    # Compute the quick call requirements delta for this module.
+    quick_call_data = _computeQuickCallDelta(quick_calls_before, quick_calls_after)
+
+    writeCompilationCacheEntry(
+        module_name=module_name,
+        source_code=module_source_code,
+        c_source=source_code,
+        const_data=const_data,
+        used_modules=module.getUsedModules(),
+        distribution_names=list(module.getUsedDistributions()),
+        code_name=module.getCodeName(),
+        is_package=module.isCompiledPythonPackage(),
+        compile_time_filename=module.getCompileTimeFilename(),
+        quick_call_data=quick_call_data,
+    )
+
+
 def makeSourceDirectory():
     """Get the full list of modules imported, create code for all of them."""
     # We deal with a lot of details here, but rather one by one, and split makes
-    # no sense, pylint: disable=too-many-branches
+    # no sense, pylint: disable=too-many-branches,too-many-locals,too-many-statements
 
     # assert main_module in ModuleRegistry.getDoneModules()
 
@@ -477,9 +610,26 @@ def makeSourceDirectory():
                 % any_case_module
             )
 
+    # When cached modules are present, ensure all internal helper functions
+    # are created, optimized, and marked as active. Cached modules skip tree
+    # building but their C source may reference these helpers.
+    has_cached_modules = any(
+        m.isCachedCompiledModule() for m in ModuleRegistry.getDoneModules()
+    )
+    if has_cached_modules:
+        _ensureAllInternalHelpers()
+
+        for current_module in ModuleRegistry.getDoneModules():
+            if current_module.isMainModule():
+                _ensureMainModuleHelpers(current_module)
+                break
+
     # Prepare code generation, i.e. execute finalization for it.
     for current_module in ModuleRegistry.getDoneModules():
-        if current_module.isCompiledPythonModule():
+        if (
+            current_module.isCompiledPythonModule()
+            and not current_module.isCachedCompiledModule()
+        ):
             Finalization.prepareCodeGeneration(current_module)
 
     # Do some reporting and determine compiled module to work on
@@ -529,19 +679,52 @@ def makeSourceDirectory():
             item=module_name,
         )
 
-        source_code = generateModuleCode(
-            module=current_module,
-            data_filename=changeFilenameExtension(
-                os.path.basename(c_filename), ".const"
-            ),
-        )
+        if current_module.isCachedCompiledModule():
+            # Write cached C source and constants directly from the cache.
+            _writeCachedModuleFiles(
+                module=current_module,
+                c_filename=c_filename,
+            )
 
-        writeSourceCode(
-            filename=c_filename,
-            source_code=source_code,
-            logger=code_generation_logger,
-            assume_yes_for_downloads=assumeYesForDownloads(),
-        )
+            # Register helper requirements from the cached module so that
+            # the helpers code generator produces the needed functions.
+            quick_call_data = current_module.getCachedQuickCallData()
+            if quick_call_data is not None:
+                registerQuickCallsUsed(quick_call_data)
+        else:
+            data_filename = changeFilenameExtension(
+                os.path.basename(c_filename), ".const"
+            )
+
+            # Snapshot quick call sets before code gen to capture the delta.
+            quick_calls_before = getQuickCallsUsedSets()
+
+            source_code = generateModuleCode(
+                module=current_module,
+                data_filename=data_filename,
+            )
+
+            # Capture what was added during this module's code generation.
+            quick_calls_after = getQuickCallsUsedSets()
+
+            writeSourceCode(
+                filename=c_filename,
+                source_code=source_code,
+                logger=code_generation_logger,
+                assume_yes_for_downloads=assumeYesForDownloads(),
+            )
+
+            # Save to compilation cache if eligible.
+            if shallUseCompilationCache() and isEligibleForCompilationCache(
+                current_module.getCompileTimeFilename()
+            ):
+                _saveModuleToCompilationCache(
+                    module=current_module,
+                    source_code=source_code,
+                    c_filename=c_filename,
+                    quick_calls_before=quick_calls_before,
+                    quick_calls_after=quick_calls_after,
+                )
 
     closeProgressBar()
 

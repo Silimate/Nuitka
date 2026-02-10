@@ -2134,6 +2134,27 @@ def getFunctionCallHelperDictionaryUnpacking():
     return result
 
 
+def ensureAllComplexCallHelpers():
+    """Ensure all complex call helper functions are created.
+
+    This is used by the compilation cache to make sure all helpers are
+    available even when some modules skip tree building.
+    """
+    getFunctionCallHelperStarList()
+    getFunctionCallHelperStarDict()
+    getFunctionCallHelperStarListStarDict()
+    getFunctionCallHelperKeywordsStarList()
+    getFunctionCallHelperKeywordsStarDict()
+    getFunctionCallHelperKeywordsStarListStarDict()
+    getFunctionCallHelperPosStarList()
+    getFunctionCallHelperPosStarDict()
+    getFunctionCallHelperPosStarListStarDict()
+    getFunctionCallHelperPosKeywordsStarList()
+    getFunctionCallHelperPosKeywordsStarDict()
+    getFunctionCallHelperPosKeywordsStarListStarDict()
+    getFunctionCallHelperDictionaryUnpacking()
+
+
 #     Part of "Nuitka", an optimizing Python compiler that is compatible and
 #     integrates with CPython, but also works on its own.
 #

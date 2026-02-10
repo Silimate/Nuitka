@@ -148,6 +148,10 @@ class PythonModuleBase(NodeBase):
         # Virtual method, pylint: disable=no-self-use
         return None
 
+    @staticmethod
+    def isCachedCompiledModule():
+        return False
+
     def getCompileTimeFilename(self):
         """The compile time filename for the module.
 
@@ -1022,6 +1026,113 @@ class PythonMainModule(CompiledPythonModule):
                     reason="stdlib",
                 )
             )
+
+
+class CachedCompiledModule(PythonModuleBase):
+    """A compiled module loaded from the compilation cache.
+
+    This represents a module whose C source code and metadata were
+    previously cached. It skips parsing, optimization, and code generation,
+    providing the cached C source and constants directly.
+    """
+
+    # pylint: disable=too-many-instance-attributes
+
+    kind = "CACHED_COMPILED_MODULE"
+
+    __slots__ = (
+        "cached_c_source",
+        "cached_const_data",
+        "cached_quick_call_data",
+        "used_modules",
+        "distribution_names",
+        "code_name_value",
+        "is_package_value",
+        "compile_time_filename",
+    )
+
+    def __init__(  # pylint: disable=too-many-arguments
+        self,
+        module_name,
+        reason,
+        cached_c_source,
+        cached_const_data,
+        cached_quick_call_data,
+        used_modules,
+        distribution_names,
+        code_name_value,
+        is_package_value,
+        compile_time_filename,
+        source_ref,
+    ):
+        PythonModuleBase.__init__(
+            self,
+            module_name=module_name,
+            reason=reason,
+            source_ref=source_ref,
+        )
+
+        self.cached_c_source = cached_c_source
+        self.cached_const_data = cached_const_data
+        self.cached_quick_call_data = cached_quick_call_data
+        self.used_modules = used_modules
+        self.distribution_names = distribution_names
+        self.code_name_value = code_name_value
+        self.is_package_value = is_package_value
+        self.compile_time_filename = compile_time_filename
+
+    def finalize(self):
+        del self.cached_c_source
+        del self.cached_const_data
+        del self.used_modules
+
+    @staticmethod
+    def isCompiledPythonModule():
+        return True
+
+    @staticmethod
+    def isCachedCompiledModule():
+        return True
+
+    def isCompiledPythonPackage(self):
+        return self.is_package_value
+
+    def getCodeName(self):
+        return self.code_name_value
+
+    def getFilename(self):
+        return self.compile_time_filename
+
+    def getCompileTimeFilename(self):
+        return self.compile_time_filename
+
+    def getUsedModules(self):
+        return self.used_modules
+
+    def setUsedModules(self, used_modules):
+        self.used_modules = used_modules
+
+    def getUsedDistributions(self):
+        return self.distribution_names
+
+    def setUsedDistributions(self, distribution_names):
+        self.distribution_names = distribution_names
+
+    def getCachedCSource(self):
+        return self.cached_c_source
+
+    def getCachedConstData(self):
+        return self.cached_const_data
+
+    def getCachedQuickCallData(self):
+        return self.cached_quick_call_data
+
+    @staticmethod
+    def startTraversal():
+        pass
+
+    def attemptRecursion(self):
+        return PythonModuleBase.attemptRecursion(self)
 
 
 class PythonExtensionModule(PythonModuleBase):

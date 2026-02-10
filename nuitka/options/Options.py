@@ -2266,6 +2266,21 @@ def shallDisableCompressionCacheUsage():
     return shallDisableCacheUsage("compression")
 
 
+def shallUseCompilationCache():
+    """:returns: bool derived from ``--enable-compilation-cache``"""
+    if options is None:
+        return False
+
+    return options.enable_compilation_cache and not shallDisableCacheUsage(
+        "compilation"
+    )
+
+
+def shallDisableCompilationCacheUsage():
+    """:returns: bool derived from ``--disable-cache=compilation``"""
+    return shallDisableCacheUsage("compilation")
+
+
 def getWindowsConsoleMode():
     """:returns: str from ``--windows-console-mode``"""
     if options.disable_console is True:

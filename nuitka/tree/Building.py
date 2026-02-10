@@ -45,6 +45,11 @@ from nuitka.BytecodeCaching import (
     hasCachedImportedModuleUsageAttempts,
 )
 from nuitka.Bytecodes import loadCodeObjectData
+from nuitka.CompilationCaching import (
+    hasCompilationCacheEntry,
+    isEligibleForCompilationCache,
+    readCompilationCacheEntry,
+)
 from nuitka.containers.OrderedSets import OrderedSet
 from nuitka.Errors import CodeTooComplexCode
 from nuitka.freezer.ImportDetection import (
@@ -94,6 +99,7 @@ from nuitka.nodes.ModuleAttributeNodes import (
     ExpressionModuleAttributeSpecRef,
 )
 from nuitka.nodes.ModuleNodes import (
+    CachedCompiledModule,
     CompiledPythonModule,
     CompiledPythonPackage,
     PythonExtensionModule,
@@ -122,6 +128,7 @@ from nuitka.options.Options import (
     isStandaloneMode,
     shallDisableBytecodeCacheUsage,
     shallMakeModule,
+    shallUseCompilationCache,
     shallWarnUnusualCode,
 )
 from nuitka.pgo.PGO import decideCompilationFromPGO
@@ -1046,6 +1053,34 @@ required to compiled."""
     return result
 
 
+def _loadCompiledModuleFromCache(module_name, reason, source_code, source_ref):
+    """Load a compiled module from the compilation cache."""
+    cache_data = readCompilationCacheEntry(
+        module_name=module_name,
+        source_code=source_code,
+        source_ref=source_ref,
+    )
+
+    # Should not happen if hasCompilationCacheEntry returned True, but be safe.
+    assert cache_data is not None, module_name
+
+    result = CachedCompiledModule(
+        module_name=module_name,
+        reason=reason,
+        cached_c_source=cache_data["c_source"],
+        cached_const_data=cache_data["const_data"],
+        cached_quick_call_data=cache_data.get("quick_call_data"),
+        used_modules=cache_data["used_modules"],
+        distribution_names=cache_data["distribution_names"],
+        code_name_value=cache_data["code_name"],
+        is_package_value=cache_data["is_package"],
+        compile_time_filename=cache_data["compile_time_filename"],
+        source_ref=source_ref,
+    )
+
+    return result
+
+
 def _loadUncompiledModuleFromCache(
     module_name, reason, is_package, source_code, source_ref
 ):
@@ -1131,6 +1166,22 @@ def _createModule(
         )
 
         if (
+            mode == "compiled"
+            and not is_top
+            and shallUseCompilationCache()
+            and isEligibleForCompilationCache(module_filename)
+            and hasCompilationCacheEntry(module_name, source_code)
+        ):
+            result = _loadCompiledModuleFromCache(
+                module_name=module_name,
+                reason=reason,
+                source_code=source_code,
+                source_ref=source_ref,
+            )
+
+            # Not used anymore
+            source_code = None
+        elif (
             mode == "bytecode"
             and not is_top
             and not shallDisableBytecodeCacheUsage()
@@ -1471,7 +1522,11 @@ def buildModule(
 
         OutputDirectories.setMainModule(module)
 
-    if module.isCompiledPythonModule() and source_code is not None:
+    if (
+        module.isCompiledPythonModule()
+        and not module.isCachedCompiledModule()
+        and source_code is not None
+    ):
         try:
             createModuleTree(
                 module=module,

@@ -1351,7 +1351,7 @@ del c_compiler_group
 
 caching_group = parser.add_option_group("Cache Control")
 
-_cache_names = ("all", "ccache", "bytecode", "compression")
+_cache_names = ("all", "ccache", "bytecode", "compilation", "compression")
 
 if isWin32Windows():
     _cache_names += ("dll-dependencies",)
@@ -1405,6 +1405,18 @@ caching_group.add_option(
     dest="disable_dll_dependency_cache",
     default=False,
     help=SUPPRESS_HELP,
+)
+
+caching_group.add_option(
+    "--enable-compilation-cache",
+    action="store_true",
+    dest="enable_compilation_cache",
+    default=False,
+    help="""\
+Enable caching of compiled C source code and metadata for site-packages and
+standard library modules. On subsequent compilations, modules that have not
+changed will be loaded from cache, skipping optimization and C code generation.
+Default off.""",
 )
 
 if isWin32Windows():

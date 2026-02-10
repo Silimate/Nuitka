@@ -175,6 +175,27 @@ def optimizeExtensionModule(module):
     considerImplicitImports(module=module)
 
 
+def optimizeCachedCompiledModule(module):
+    """Handle a module loaded from the compilation cache.
+
+    This only needs to discover dependencies so that the modules
+    it imports are followed, but skips actual optimization since the
+    C source code is already cached.
+    """
+    module_name = module.getFullName()
+
+    progress_logger.info(
+        "Using cached compilation for '{module_name}':".format(module_name=module_name)
+    )
+
+    # Pick up parent package if any.
+    module.attemptRecursion()
+
+    considerUsedModules(module=module, pass_count=pass_count)
+
+    considerImplicitImports(module=module)
+
+
 def optimizeModule(module):
     # The tag set is global, so it can track changes without context.
     # pylint: disable=global-statement
@@ -185,6 +206,9 @@ def optimizeModule(module):
 
     if module.isPythonExtensionModule():
         optimizeExtensionModule(module)
+        return False, 0
+    elif module.isCachedCompiledModule():
+        optimizeCachedCompiledModule(module)
         return False, 0
     elif module.isCompiledPythonModule():
         return optimizeCompiledPythonModule(module)
@@ -334,7 +358,10 @@ def makeOptimizationPass():
     # collections of functions no longer used. This must be done after global
     # optimization due to cross module usages.
     for current_module in ModuleRegistry.getDoneModules():
-        if current_module.isCompiledPythonModule():
+        if (
+            current_module.isCompiledPythonModule()
+            and not current_module.isCachedCompiledModule()
+        ):
             for unused_function in current_module.getUnusedFunctions():
                 removeVariablesFromCollection(unused_function.trace_collection)
 
@@ -362,6 +389,7 @@ def _optimizeModules(output_filename):
     for module in ModuleRegistry.getDoneModules():
         if (
             module.isCompiledPythonModule()
+            and not module.isCachedCompiledModule()
             and module.getCompilationMode() == "bytecode"
         ):
             demoteCompiledModuleToBytecode(module)
