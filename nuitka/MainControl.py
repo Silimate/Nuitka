@@ -41,6 +41,7 @@ from nuitka.freezer.IncludedDataFiles import (
     addIncludedDataFilesFromFlavor,
     addIncludedDataFilesFromPackageOptions,
     addIncludedDataFilesFromPlugins,
+    checkProjectExpectedDataFiles,
     copyDataFiles,
 )
 from nuitka.freezer.IncludedEntryPoints import (
@@ -1354,6 +1355,9 @@ def _main():
 
     addIncludedDataFilesFromMacOSAppOptions()
     addIncludedDataFilesFromPlugins()
+
+    # Check if the --project expectations are met for data files.
+    checkProjectExpectedDataFiles()
 
     dumpTreeXML()
 
