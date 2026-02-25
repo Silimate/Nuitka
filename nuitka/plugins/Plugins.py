@@ -895,8 +895,9 @@ through implicit import by '%s' plugin encountered."""
                 % (module_name, e)
             )
 
-        if trigger_module.getCompilationMode() == "bytecode":
-            trigger_module.setSourceCode(code)
+        # Always store source code on the trigger module, since the filename is
+        # fake and reading from disk would fail when saving to compilation cache.
+        trigger_module.setSourceCode(code)
 
         return trigger_module
 
@@ -1049,8 +1050,10 @@ through implicit import by '%s' plugin encountered."""
                     hide_syntax_error=False,
                 )
 
-                if fake_module.getCompilationMode() == "bytecode":
-                    fake_module.setSourceCode(source_code)
+                # Always store source code on the fake module, since the filename
+                # is fake and reading from disk would fail when saving to
+                # compilation cache.
+                fake_module.setSourceCode(source_code)
 
                 fake_modules[full_name].append((fake_module, plugin, reason))
 
