@@ -1377,7 +1377,7 @@ def buildModule(
     hide_syntax_error,
 ):
     # Many details to deal with,
-    # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+    # pylint: disable=too-many-branches,too-many-locals,too-many-return-statements,too-many-statements
     (
         main_added,
         is_package,
@@ -1444,6 +1444,34 @@ def buildModule(
                     reason=reason,
                     module_filename=module_filename,
                 )
+
+        # Before parsing the AST (which can be expensive), check whether this
+        # module can be served from the compilation cache. The source code is
+        # needed for the cache key, but the AST is not.
+        if (
+            not is_top
+            and not is_main
+            and not is_fake
+            and decideCompilationMode(
+                is_top=is_top,
+                module_name=module_name,
+                module_filename=module_filename,
+                for_pgo=False,
+            )
+            == "compiled"
+            and shallUseCompilationCache()
+            and isEligibleForCompilationCache(module_filename)
+            and hasCompilationCacheEntry(module_name, source_code)
+        ):
+            cached_module = _loadCompiledModuleFromCache(
+                module_name=module_name,
+                reason=reason,
+                source_code=source_code,
+                source_ref=source_ref,
+            )
+
+            if cached_module is not None:
+                return cached_module
 
         try:
             with withNoSyntaxWarning():
