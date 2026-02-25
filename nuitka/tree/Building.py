@@ -1061,8 +1061,8 @@ def _loadCompiledModuleFromCache(module_name, reason, source_code, source_ref):
         source_ref=source_ref,
     )
 
-    # Should not happen if hasCompilationCacheEntry returned True, but be safe.
-    assert cache_data is not None, module_name
+    if cache_data is None:
+        return None
 
     result = CachedCompiledModule(
         module_name=module_name,
@@ -1165,6 +1165,8 @@ def _createModule(
             for_pgo=False,
         )
 
+        result = None
+
         if (
             mode == "compiled"
             and not is_top
@@ -1179,9 +1181,11 @@ def _createModule(
                 source_ref=source_ref,
             )
 
-            # Not used anymore
-            source_code = None
-        elif (
+            if result is not None:
+                # Not used anymore
+                source_code = None
+
+        if result is None and (
             mode == "bytecode"
             and not is_top
             and not shallDisableBytecodeCacheUsage()
@@ -1199,7 +1203,8 @@ def _createModule(
 
             # Not used anymore
             source_code = None
-        else:
+
+        if result is None:
             if is_package:
                 result = CompiledPythonPackage(
                     module_name=module_name,
