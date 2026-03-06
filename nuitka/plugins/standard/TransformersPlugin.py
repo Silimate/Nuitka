@@ -69,23 +69,26 @@ class NuitkaPluginTransformers(NuitkaPluginBase):
         module_name = module.getFullName()
 
         if module_name in self._import_structure_modules:
-            for sub_module_name in self.queryRuntimeInformationSingle(
+            import_structure_keys = self.queryRuntimeInformationSingle(
                 setup_codes="import %s" % module_name.asString(),
                 value="list(getattr(%(module_name)s, '_import_structure', {}).keys())"
                 % {"module_name": module_name.asString()},
                 info_name="import_structure_for_%s" % module_name.asString(),
-            ):
-                sub_module_name = module_name.getChildNamed(sub_module_name)
+            )
 
-                if (
-                    sub_module_name == "transformers.testing_utils"
-                    and not self.evaluateCondition(
-                        full_name="transformers", condition="use_pytest"
-                    )
-                ):
-                    continue
+            if import_structure_keys is not None:
+                for sub_module_name in import_structure_keys:
+                    sub_module_name = module_name.getChildNamed(sub_module_name)
 
-                yield sub_module_name
+                    if (
+                        sub_module_name == "transformers.testing_utils"
+                        and not self.evaluateCondition(
+                            full_name="transformers", condition="use_pytest"
+                        )
+                    ):
+                        continue
+
+                    yield sub_module_name
 
         if module_name in self._define_structure_modules:
             for sub_module_name in (
@@ -107,19 +110,20 @@ class NuitkaPluginTransformers(NuitkaPluginBase):
                     prefix="models",
                 )
 
-                # Frozenset does not transport as such, so we converted
-                # them to tuples and now back for compatibility.
-                import_structure_value = dict(
-                    (frozenset(key), value)
-                    for key, value in import_structure_value.items()
-                )
+                if import_structure_value is not None:
+                    # Frozenset does not transport as such, so we converted
+                    # them to tuples and now back for compatibility.
+                    import_structure_value = dict(
+                        (frozenset(key), value)
+                        for key, value in import_structure_value.items()
+                    )
 
-                source_code = source_code.replace(
-                    'define_import_structure(Path(__file__).parent / "models", prefix="models")',
-                    repr(import_structure_value),
-                )
+                    source_code = source_code.replace(
+                        'define_import_structure(Path(__file__).parent / "models", prefix="models")',
+                        repr(import_structure_value),
+                    )
 
-                self._define_structure_modules[module_name] = import_structure_value
+                    self._define_structure_modules[module_name] = import_structure_value
 
             if "define_import_structure(_file)" in source_code:
                 import_structure_value = self._getImportStructureDefinition(
@@ -128,18 +132,20 @@ class NuitkaPluginTransformers(NuitkaPluginBase):
                     prefix=None,
                 )
 
-                # Frozenset does not transport as such, so we converted
-                # them to tuples and now back for compatibility.
-                import_structure_value = dict(
-                    (frozenset(key), value)
-                    for key, value in import_structure_value.items()
-                )
+                if import_structure_value is not None:
+                    # Frozenset does not transport as such, so we converted
+                    # them to tuples and now back for compatibility.
+                    import_structure_value = dict(
+                        (frozenset(key), value)
+                        for key, value in import_structure_value.items()
+                    )
 
-                source_code = source_code.replace(
-                    "define_import_structure(_file)", repr(import_structure_value)
-                )
+                    source_code = source_code.replace(
+                        "define_import_structure(_file)",
+                        repr(import_structure_value),
+                    )
 
-                self._define_structure_modules[module_name] = import_structure_value
+                    self._define_structure_modules[module_name] = import_structure_value
 
         return source_code
 

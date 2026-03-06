@@ -1488,11 +1488,16 @@ except Exception as e:
         if info_name is None:
             info_name = "temp_info_for_" + self.plugin_name.replace("-", "_")
 
-        return self.queryRuntimeInformationMultiple(
+        result = self.queryRuntimeInformationMultiple(
             info_name=info_name,
             setup_codes=setup_codes,
             values=(("key", value),),
-        ).key
+        )
+
+        if result is None:
+            return None
+
+        return result.key
 
     def onFunctionBodyParsing(
         self, module_name, function_qualname, function_name, body

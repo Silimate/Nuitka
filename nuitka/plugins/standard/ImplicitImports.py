@@ -462,17 +462,18 @@ __file__ = (__nuitka_binary_dir + '%s" + "site.py') if '__nuitka_binary_dir' in 
                     info_name="huggingface_hub_lazy_loader",
                 )
 
-                self._addLazyLoader(
-                    module_name,
-                    submodules=(),
-                    submodule_attrs=dict(
-                        ("." + submodule_name, attributes)
-                        for (
-                            submodule_name,
-                            attributes,
-                        ) in huggingface_hub_lazy_loader_info.items()
-                    ),
-                )
+                if huggingface_hub_lazy_loader_info is not None:
+                    self._addLazyLoader(
+                        module_name,
+                        submodules=(),
+                        submodule_attrs=dict(
+                            ("." + submodule_name, attributes)
+                            for (
+                                submodule_name,
+                                attributes,
+                            ) in huggingface_hub_lazy_loader_info.items()
+                        ),
+                    )
 
         if module_name == "pydantic":
             # Pydantic has its own lazy loading, spell-checker: ignore pydantic
@@ -483,29 +484,30 @@ __file__ = (__nuitka_binary_dir + '%s" + "site.py') if '__nuitka_binary_dir' in 
                     info_name="pydantic_lazy_loader",
                 )
 
-                pydantic_lazy_loader_info = {}
-                pydantic_lazy_submodules = []
+                if pydantic_info is not None:
+                    pydantic_lazy_loader_info = {}
+                    pydantic_lazy_submodules = []
 
-                for key, value in pydantic_info.items():
-                    # Older pydantic had only a string for the attribute.
-                    if type(value) is tuple:
-                        # Special case, __module__ means it's a sub-module
-                        if value == ("pydantic", "__module__"):
-                            pydantic_lazy_submodules.append(key)
-                            continue
+                    for key, value in pydantic_info.items():
+                        # Older pydantic had only a string for the attribute.
+                        if type(value) is tuple:
+                            # Special case, __module__ means it's a sub-module
+                            if value == ("pydantic", "__module__"):
+                                pydantic_lazy_submodules.append(key)
+                                continue
 
-                        # Otherwise it's a long winded way of specifying a module name.
-                        value = "".join(value).rstrip(".")
+                            # Otherwise it's a long winded way of specifying a module name.
+                            value = "".join(value).rstrip(".")
 
-                    if value not in pydantic_lazy_loader_info:
-                        pydantic_lazy_loader_info[value] = []
-                    pydantic_lazy_loader_info[value].append(key)
+                        if value not in pydantic_lazy_loader_info:
+                            pydantic_lazy_loader_info[value] = []
+                        pydantic_lazy_loader_info[value].append(key)
 
-                self._addLazyLoader(
-                    module_name=module_name,
-                    submodules=pydantic_lazy_submodules,
-                    submodule_attrs=pydantic_lazy_loader_info,
-                )
+                    self._addLazyLoader(
+                        module_name=module_name,
+                        submodules=pydantic_lazy_submodules,
+                        submodule_attrs=pydantic_lazy_loader_info,
+                    )
 
         if module_name == "scipy":
             # Scipy has its own lazy loading, spell-checker: ignore scipy
@@ -516,11 +518,12 @@ __file__ = (__nuitka_binary_dir + '%s" + "site.py') if '__nuitka_binary_dir' in 
                     info_name="scipy_lazy_loader",
                 )
 
-                self._addLazyLoader(
-                    module_name=module_name,
-                    submodules=scipy_info,
-                    submodule_attrs={},
-                )
+                if scipy_info is not None:
+                    self._addLazyLoader(
+                        module_name=module_name,
+                        submodules=scipy_info,
+                        submodule_attrs={},
+                    )
 
         if module_name == "toga":
             # Toga has lazy loading in some versions.
@@ -532,20 +535,23 @@ __file__ = (__nuitka_binary_dir + '%s" + "site.py') if '__nuitka_binary_dir' in 
                     info_name="toga_lazy_loader",
                 )
 
-                toga_submodule_attrs = {}
+                if toga_info is not None:
+                    toga_submodule_attrs = {}
 
-                for attribute_name, sub_module_name in toga_info.items():
-                    if sub_module_name not in toga_submodule_attrs:
-                        toga_submodule_attrs[sub_module_name] = []
-                    toga_submodule_attrs[sub_module_name].append(attribute_name)
+                    for attribute_name, sub_module_name in toga_info.items():
+                        if sub_module_name not in toga_submodule_attrs:
+                            toga_submodule_attrs[sub_module_name] = []
+                        toga_submodule_attrs[sub_module_name].append(attribute_name)
 
-                self._addLazyLoader(
-                    module_name=module_name,
-                    submodules=(),
-                    submodule_attrs=toga_submodule_attrs,
-                )
+                    self._addLazyLoader(
+                        module_name=module_name,
+                        submodules=(),
+                        submodule_attrs=toga_submodule_attrs,
+                    )
 
-                source_code = source_code.replace("= lazy_load()", " = %r" % toga_info)
+                    source_code = source_code.replace(
+                        "= lazy_load()", " = %r" % toga_info
+                    )
 
         if module_name == "vllm":  # spell-checker: ignore vllm
             if "def __getattr__(" in source_code:
@@ -555,21 +561,22 @@ __file__ = (__nuitka_binary_dir + '%s" + "site.py') if '__nuitka_binary_dir' in 
                     info_name="vllm_lazy_loader",
                 )
 
-                vllm_submodule_attrs = {}
+                if vllm_info is not None:
+                    vllm_submodule_attrs = {}
 
-                for attribute_name, attribute_desc in vllm_info.items():
-                    assert ":" in attribute_desc, attribute_desc
-                    sub_module_name, _sub_attribute_name = attribute_desc.split(":")
+                    for attribute_name, attribute_desc in vllm_info.items():
+                        assert ":" in attribute_desc, attribute_desc
+                        sub_module_name, _sub_attribute_name = attribute_desc.split(":")
 
-                    if sub_module_name not in vllm_submodule_attrs:
-                        vllm_submodule_attrs[attribute_name] = []
-                    vllm_submodule_attrs[attribute_name].append(sub_module_name)
+                        if sub_module_name not in vllm_submodule_attrs:
+                            vllm_submodule_attrs[attribute_name] = []
+                        vllm_submodule_attrs[attribute_name].append(sub_module_name)
 
-                self._addLazyLoader(
-                    module_name=module_name,
-                    submodules=(),
-                    submodule_attrs=vllm_submodule_attrs,
-                )
+                    self._addLazyLoader(
+                        module_name=module_name,
+                        submodules=(),
+                        submodule_attrs=vllm_submodule_attrs,
+                    )
 
         return source_code
 

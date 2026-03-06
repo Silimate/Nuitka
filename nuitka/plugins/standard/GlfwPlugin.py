@@ -50,7 +50,7 @@ class NuitkaPluginGlfw(NuitkaPluginBase):
             )
 
             # TODO: Filter by name.
-            for _name, import_path in opengl_infos:
+            for _name, import_path in opengl_infos or ():
                 yield ModuleName(import_path).getPackageName()
 
             code = getFileContents(module.getCompileTimeFilename())
